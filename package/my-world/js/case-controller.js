@@ -1,0 +1,312 @@
+/* Interaction state, drop rules and lifecycle. No game/save mutations. */
+CaseComic.Controller=class{
+  constructor(host,onComplete,session){
+    this.host=host;
+    this.onComplete=onComplete;
+    this.s=session||{
+      mode:'puzzle',page:0,placed:{
+      }
+      ,selected:null,playing:false,playIndex:0
+    }
+    ;
+    this.gesture=null;
+    this.timer=null;
+    this.abort=new AbortController();
+    this.reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.audio=null;
+    this.alive=true
+  }
+  mount(){
+    this.draw();
+    const opts={
+      signal:this.abort.signal
+    }
+    ;
+    this.host.addEventListener('pointerdown',e=>this.down(e),opts);
+    window.addEventListener('pointermove',e=>this.move(e),opts);
+    window.addEventListener('pointerup',e=>this.up(e),opts);
+    window.addEventListener('pointercancel',()=>this.cancel(),opts);
+    window.addEventListener('blur',()=>this.cancel(),opts);
+    this.host.addEventListener('click',e=>this.click(e),opts);
+    this.host.addEventListener('keydown',e=>{
+      if(this.s.mode!=='puzzle'&&['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();this.action(e.key==='ArrowLeft'?'shotPrev':'shotNext');return}
+      if(e.key==='Escape'){
+        this.cancel();
+        this.s.selected=null;
+        this.draw()
+      }
+    }
+    ,opts);
+    document.addEventListener('visibilitychange',()=>{
+      if(document.hidden){
+        this.cancel();
+        this.s.playing=false;
+        this.draw()
+      }
+    }
+    ,opts);
+    return this
+  }
+  draw(){
+    if(!this.alive)return;
+    if(this.replayDeadline!==undefined&&this.replayFrame===this.s.playIndex)this.replayRemaining=Math.max(0,this.replayDeadline-performance.now());
+    this.replayDeadline=undefined;
+    if(this.replayFrame!==this.s.playIndex||this.replayMode!=='replay'||this.s.mode!=='replay')this.replayRemaining=undefined;
+    clearTimeout(this.timer);
+    this.host.innerHTML=CaseComic.View.render(this.s);
+    const delay=this.replayRemaining??CaseComic.Data.artworks[this.s.playIndex].duration;
+    if(this.s.mode==='replay'&&this.s.playing){this.replayDeadline=performance.now()+delay;this.timer=setTimeout(()=>{
+      if(this.s.playIndex===7){
+        this.s.mode='complete';
+        this.s.playing=false
+      }
+      else{
+        this.s.playIndex++;
+        this.s.page=CaseComic.Data.events[this.s.playIndex].page??CaseComic.Data.pages.findIndex(p=>p.includes(this.s.playIndex))
+      }
+      this.draw()
+    }
+    ,delay)}
+    this.replayFrame=this.s.playIndex;this.replayMode=this.s.mode;
+  }
+  announce(text){
+    const el=this.host.querySelector('#cc-status');
+    if(el)el.textContent=text
+  }
+  tone(kind){
+    try{
+      if(!this.audio)this.audio=new(window.AudioContext||window.webkitAudioContext)();
+      this.audio.resume().catch(()=>{
+      }
+      );
+      const o=this.audio.createOscillator(),g=this.audio.createGain(),t=this.audio.currentTime;
+      o.type='sine';
+      o.frequency.setValueAtTime(kind==='reject'?160:kind==='page'?510:340,t);
+      o.frequency.exponentialRampToValueAtTime(kind==='reject'?110:620,t+.1);
+      g.gain.setValueAtTime(.025,t);
+      g.gain.exponentialRampToValueAtTime(.0001,t+.14);
+      o.connect(g);
+      g.connect(this.audio.destination);
+      o.start(t);
+      o.stop(t+.15)
+    }
+    catch{
+    }
+  }
+  down(e){
+    if(this.busy||this.s.mode!=='puzzle'||e.button!==0)return;
+    const el=e.target.closest('[data-piece]');
+    if(!el)return;
+    const rect=el.getBoundingClientRect();
+    this.gesture={
+      id:Number(el.dataset.piece),el,source:el.closest('[data-slot]')?Number(el.closest('[data-slot]').dataset.slot):null,x:e.clientX,y:e.clientY,dx:e.clientX-rect.left,dy:e.clientY-rect.top,rect,dragging:false
+    }
+    ;
+    el.setPointerCapture?.(e.pointerId)
+  }
+  move(e){
+    const g=this.gesture;
+    if(!g)return;
+    if(!g.dragging&&Math.hypot(e.clientX-g.x,e.clientY-g.y)<7)return;
+    if(!g.dragging){
+      g.dragging=true;
+      g.el.classList.add('lifting');
+      g.ghost=document.createElement('div');
+      g.ghost.className='cc-drag-ghost';
+      g.ghost.innerHTML=CaseComic.View.art(g.id,true);
+      g.ghost.style.width=Math.min(230,g.rect.width)+'px';
+      g.ghost.style.height=Math.min(145,g.rect.height)+'px';
+      document.body.appendChild(g.ghost);
+      this.host.classList.add('cc-dragging');
+      this.announce('已拿起'+CaseComic.Data.events[g.id].title)
+    }
+    e.preventDefault();
+    g.ghost.style.left=(e.clientX-Math.min(g.dx,100))+'px';
+    g.ghost.style.top=(e.clientY-Math.min(g.dy,55))+'px';
+    this.host.querySelectorAll('.over').forEach(n=>n.classList.remove('over'));
+    const slot=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-slot]');
+    if(slot&&CaseComic.Data.movable.includes(Number(slot.dataset.slot)))slot.classList.add('over')
+  }
+  up(e){
+    const g=this.gesture;
+    if(!g){
+      if(e.pointerType==='touch'&&!this.busy){
+        const action=e.target.closest?.('[data-action]');
+        if(action&&!action.disabled){
+          this.lastDrop={
+            x:e.clientX,y:e.clientY,at:performance.now()
+          }
+          ;
+          this.action(action.dataset.action)
+        }
+      }
+      return
+    }
+    this.gesture=null;
+    if(!g.dragging){
+      if(e.pointerType==='touch'){
+        this.click({
+          target:g.el,detail:0
+        }
+        );
+        this.lastDrop={
+          x:e.clientX,y:e.clientY,at:performance.now()
+        }
+      }
+      return
+    }
+    this.lastDrop={
+      x:e.clientX,y:e.clientY,at:performance.now()
+    }
+    ;
+    const target=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-slot]');
+    const id=target?Number(target.dataset.slot):null;
+    if(target&&CaseComic.Data.movable.includes(id)){
+      const rect=target.getBoundingClientRect();
+      this.settleGhost(g,rect,false);
+      this.place(g.id,id,g.source)
+    }
+    else{
+      this.settleGhost(g,g.rect,true);
+      g.el.classList.remove('lifting');
+      this.host.classList.remove('cc-dragging');
+      this.host.querySelectorAll('.over').forEach(n=>n.classList.remove('over'));
+      this.announce('碎片已放回')
+    }
+  }
+  settleGhost(g,rect,reject){
+    if(!g.ghost)return;
+    g.ghost.classList.toggle('reject',reject);
+    g.ghost.style.transition=this.reduced?'none':'left 180ms ease,top 180ms ease,opacity 180ms ease,transform 180ms ease';
+    g.ghost.style.left=rect.left+'px';
+    g.ghost.style.top=rect.top+'px';
+    g.ghost.style.opacity='0';
+    g.ghost.style.transform='scale(.92)';
+    setTimeout(()=>g.ghost.remove(),this.reduced?0:190)
+  }
+  place(piece,slot,source=null){
+    if(!CaseComic.Data.movable.includes(slot))return;
+    const occupied=this.s.placed[slot];
+    if(source===null){
+      const old=Object.entries(this.s.placed).find(([,p])=>p===piece);
+      if(old)source=Number(old[0])
+    }
+    if(source!==null)delete this.s.placed[source];
+    if(occupied!==undefined&&occupied!==piece&&source!==null)this.s.placed[source]=occupied;
+    this.s.placed[slot]=piece;
+    this.s.selected=null;
+    this.draw();
+    this.tone('drop');
+    const el=this.host.querySelector(`[data-slot="${slot}"]`);
+    el?.classList.add('just-dropped');
+    this.announce('画格已拼合');
+    setTimeout(()=>el?.classList.remove('just-dropped'),550)
+  }
+  cancel(){
+    if(this.gesture){
+      this.gesture.ghost?.remove();
+      this.gesture.el.classList.remove('lifting')
+    }
+    this.gesture=null;
+    this.host.classList.remove('cc-dragging');
+    this.host.querySelectorAll('.over').forEach(n=>n.classList.remove('over'))
+  }
+  click(e){
+    if(this.busy)return;
+    if(this.lastDrop&&e.detail!==0&&performance.now()-this.lastDrop.at<450&&Math.hypot(e.clientX-this.lastDrop.x,e.clientY-this.lastDrop.y)<15)return;
+    const action=e.target.closest('[data-action]');
+    if(action&&!action.disabled){
+      this.action(action.dataset.action);
+      return
+    }
+    if(this.s.mode!=='puzzle')return;
+    const slot=e.target.closest('[data-slot]');
+    if(slot&&this.s.selected!==null&&CaseComic.Data.movable.includes(Number(slot.dataset.slot))){
+      this.place(this.s.selected,Number(slot.dataset.slot));
+      return
+    }
+    const piece=e.target.closest('[data-piece]');
+    if(piece){
+      this.s.selected=this.s.selected===Number(piece.dataset.piece)?null:Number(piece.dataset.piece);
+      this.draw();
+      this.announce(this.s.selected===null?'已取消选择':'已选中'+CaseComic.Data.events[this.s.selected].title)
+    }
+  }
+  action(action){
+    this.cancel();
+    if(action==='shotPrev'||action==='shotNext'){
+      this.s.playIndex=Math.max(0,Math.min(7,this.s.playIndex+(action==='shotPrev'?-1:1)));
+      this.s.mode='replay';this.s.playing=false;this.draw();return
+    }
+    if(action==='prev'){
+      this.s.page=Math.max(0,this.s.page-1);
+      this.s.selected=null;
+      this.draw();
+      return
+    }
+    if(action==='next'){
+      const wrong=CaseComic.Data.pages[this.s.page].filter(i=>CaseComic.Data.movable.includes(i)&&this.s.placed[i]!==i);
+      if(wrong.length){
+        this.busy=true;
+        this.host.querySelector('[data-action="next"]').disabled=true;
+        this.tone('reject');
+        wrong.forEach(i=>this.host.querySelector(`[data-slot="${i}"]`)?.classList.add('contradiction'));
+        this.announce('这段经过尚未衔接');
+        this.feedbackTimer=setTimeout(()=>{
+          if(!this.alive)return;
+          wrong.forEach(i=>delete this.s.placed[i]);
+          this.busy=false;
+          this.draw()
+        }
+        ,this.reduced?0:550);
+        return
+      }
+      this.tone('page');
+      if(this.s.page<2){
+        this.s.page++;
+        this.s.selected=null;
+        this.draw();
+        this.host.querySelector('.cc-paper')?.classList.add('turning')
+      }
+      else if(CaseComic.Data.movable.every(i=>this.s.placed[i]===i)){
+        this.s.mode='replay';
+        this.s.playIndex=0;
+        this.s.page=0;
+        this.s.playing=!this.reduced;
+        this.draw()
+      }
+      else{
+        this.s.page=CaseComic.Data.pages.findIndex(p=>p.some(i=>CaseComic.Data.movable.includes(i)&&this.s.placed[i]!==i));
+        this.draw()
+      }
+      return
+    }
+    if(action==='pause'){
+      this.s.playing=!this.s.playing;
+      this.draw()
+    }
+    else if(action==='replay'){
+      this.s.mode='replay';
+      this.s.playIndex=0;
+      this.s.page=0;
+      this.s.playing=!this.reduced;
+      this.draw()
+    }
+    else if(action==='finish'){
+      this.destroy();
+      this.onComplete()
+    }
+  }
+  destroy(){
+    this.alive=false;
+    clearTimeout(this.timer);
+    clearTimeout(this.feedbackTimer);
+    this.cancel();
+    this.abort.abort();
+    this.audio?.close().catch(()=>{
+    }
+    );
+    this.host.classList.remove('cc-dragging')
+  }
+}
+;

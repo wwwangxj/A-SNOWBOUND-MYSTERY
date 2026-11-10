@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>世界线 · 交接完成</title>
+<style>
+  :root { --bg:#0b1120; --panel:#121b2d; --line:#22334f; --text:#dce6f5; --dim:#9fb4d4; --accent:#35e08c; --mute:#7d90ad; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/26px "PingFang SC","Microsoft YaHei",system-ui,sans-serif; display:flex; justify-content:center; }
+  .wrap { width:100%; max-width:640px; padding:60px 20px; }
+  .kicker { font:600 12px/18px Consolas,monospace; letter-spacing:6px; color:var(--accent); }
+  h1 { font-size:28px; margin:10px 0 6px; }
+  .sub { color:var(--mute); font-size:13px; margin-bottom:26px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:12px; padding:18px 20px; }
+  .row { margin:6px 0; color:var(--dim); font-size:14px; }
+  .row b { color:var(--text); }
+  .hook { font-style:italic; color:#aebdd4; margin-top:10px; }
+  .note { color:var(--mute); font-size:12px; margin-top:22px; line-height:20px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="kicker">WORLD LINE · END OF THIS LINK</div>
+  <h1>世界线到此为止</h1>
+  <div class="sub">这一关已经通关，存档已交出去。</div>
+  <div class="card" id="card"><div class="row">正在读取存档…</div></div>
+  <p class="note">这是最后的兜底页：当没有下一关地址时，玩家会停在这里，而不是撞上 404。</p>
+</div>
+
+<!-- 优先用官方协议库；加载失败则用下面的内置解码兜底 -->
+<script src="../shared/save-protocol.js"></script>
+<script>
+(function () {
+  'use strict';
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+  function decodeQuery() {
+    var m = location.search.match(/[?&]save=([^&]+)/);
+    if (!m) return null;
+    try {
+      var raw = decodeURIComponent(escape(atob(decodeURIComponent(m[1]))));
+      return JSON.parse(raw);
+    } catch (e) { return null; }
+  }
+  function loadSave() {
+    if (window.WL && typeof WL.readSave === 'function') {
+      try { return WL.readSave(); } catch (e) { /* 落到兜底 */ }
+    }
+    var fromUrl = decodeQuery();
+    if (fromUrl) return fromUrl;
+    try {
+      var s = localStorage.getItem('wuxianliu_save_v2');
+      if (s) return JSON.parse(s);
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+  function card(save) {
+    if (!save) return '<div class="row">没有读到存档。你可能直接打开了这一页。</div>';
+    var items = (save.items || []).map(function (i) { return esc(i.name || i.id); }).join('、') || '空';
+    var clues = (save.clues || []).map(function (c) { return '<li>' + esc(c) + '</li>'; }).join('') || '<li>无</li>';
+    return '<div class="row">第 <b>' + esc(save.level || '?') + '</b> 关 · ' +
+           esc(save.prev_world || '') + '</div>' +
+           '<div class="row">随身道具：<b>' + items + '</b></div>' +
+           '<ul>' + clues + '</ul>' +
+           (save.exit_hook ? '<div class="hook">“' + esc(save.exit_hook) + '”</div>' : '');
+  }
+  document.getElementById('card').innerHTML = card(loadSave());
+})();
+</script>
+</body>
+</html>
