@@ -1,0 +1,41 @@
+# CI 工作流模板 —— 当前未启用。
+# 本文件位于 docs/ 下，GitHub Actions 不会加载它。
+# 需要启用自动化回归时，将其复制回 .github/workflows/verify-integrated.yml 并提交
+# （需要具备 workflow scope 的凭据）。
+name: Integrated game verification
+on:
+  push:
+    paths:
+      - 'index.html'
+      - 'src/**'
+      - 'scripts/**'
+      - '.github/workflows/verify-integrated.yml'
+  pull_request:
+    paths:
+      - 'index.html'
+      - 'src/**'
+      - 'scripts/**'
+      - '.github/workflows/verify-integrated.yml'
+jobs:
+  static-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check generated entry and JavaScript syntax
+        run: node scripts/verify.mjs
+  browser-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install browser test dependencies
+        run: |
+          python -m pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Full playable journey regression
+        run: python tests/browser_smoke.py

@@ -1,0 +1,11 @@
+
+/* Only the integration flow; original interface style sheets stay untouched. */
+#case-preview{display:none;min-height:100vh}
+#game-app-shell[hidden],#case-preview[hidden]{display:none!important}
+.merged-final .cc-stage{display:flex;justify-content:center;align-items:center;padding-block:38px}
+.merged-final-content{width:min(720px,100%);margin:auto;text-align:center;border:1px solid #b69b674f;background:#171d1bea;box-shadow:0 24px 60px #0006;padding:clamp(24px,5vw,58px) 24px}
+.merged-final-content .cc-eyebrow{letter-spacing:5px;color:#c7ad7c}
+.merged-final-content h2{font-weight:400;font-size:clamp(29px,5vw,54px);letter-spacing:7px;color:#e3c99a;margin:18px 0}
+.merged-final-content p{font-size:16px;color:#d0c6b2;line-height:2}
+.merged-final-content .cc-actions{justify-content:center;flex-wrap:wrap;margin-top:34px}
+@media(max-width:760px){.merged-final .cc-stage{padding:16px 0}.merged-final-content p{font-size:14px}}

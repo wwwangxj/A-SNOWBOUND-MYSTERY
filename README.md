@@ -1,5 +1,24 @@
 # 暴雪山庄 V4.10 · 真相揭晓与中文旁白版
 
+
+<!-- INTEGRATED-GAME-ENTRY:START -->
+
+## 当前网站入口：完整合并版
+
+GitHub Pages 根目录 `index.html` 现展示**调查与指认 → 终局推演 → 真相回放 → 存档交接**的完整流程，取材于用户确认的 **V4.0 调查游戏 + 终局推演** 两个 HTML，保留原始资源和交互。单文件离线可打开。
+
+- **网站/离线入口**：[`index.html`](./index.html)
+- **模块化维护入口**：`src/investigation/`（调查）、`src/finale/`（推演）、`src/integration/`（衔接）
+- **构建网站**：`node scripts/build.mjs`
+- **静态验证**：`node scripts/verify.mjs`
+- **浏览器回归**：`python tests/browser_smoke.py`（需要 Playwright 与 Chromium）
+
+**版本说明**：原仓库中的 `暴雪山庄_V4.10_直接试玩.html`、开发试听版、中文旁白、音频相关 JSON 和历史提交包均保留为独立 V4.10 版本。当前根目录首页以已确认的 V4.0 合并页面为视觉与交互基准，并未宣称把 V4.10 旁白系统迁入首页。
+
+完整结构、更新范围、测试与回滚见 [`docs/INTEGRATION.md`](./docs/INTEGRATION.md)。
+
+<!-- INTEGRATED-GAME-ENTRY:END -->
+
 一款纯前端的互动推理游戏（视觉小说 + 漫画分镜 + 像素拼图）。单文件 HTML 即可运行，无需服务器、无第三方音频素材、无网络依赖。
 
 ## 直接试玩
